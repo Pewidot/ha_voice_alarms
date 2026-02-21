@@ -35,10 +35,20 @@ class AlarmStorage:
                 enabled INTEGER NOT NULL DEFAULT 1,
                 repeat_days TEXT,
                 sound TEXT,
-                created_at INTEGER NOT NULL
+                created_at INTEGER NOT NULL,
+                media_player TEXT
             )
         """)
         self._conn.commit()
+
+        # Migration: add media_player column for existing databases
+        try:
+            self._conn.execute("ALTER TABLE alarms ADD COLUMN media_player TEXT")
+            self._conn.commit()
+            logger.info("Migrated alarms table: added media_player column")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         logger.info("Alarm database initialized at %s", db_path)
 
     def add_alarm(
@@ -47,6 +57,7 @@ class AlarmStorage:
         time: str,
         repeat_days: list[str] | None = None,
         sound: str = "default",
+        media_player: str | None = None,
     ) -> int:
         """
         Add a new alarm.
@@ -56,6 +67,7 @@ class AlarmStorage:
             time: Time in HH:MM format
             repeat_days: List of days (mon, tue, wed, thu, fri, sat, sun) or None for one-time
             sound: Sound to play
+            media_player: Optional media player entity ID to play alarm on
 
         Returns:
             The ID of the created alarm
@@ -65,10 +77,10 @@ class AlarmStorage:
 
         cursor = self._conn.execute(
             """
-            INSERT INTO alarms (name, time, enabled, repeat_days, sound, created_at)
-            VALUES (?, ?, 1, ?, ?, ?)
+            INSERT INTO alarms (name, time, enabled, repeat_days, sound, created_at, media_player)
+            VALUES (?, ?, 1, ?, ?, ?, ?)
             """,
-            (name, time, repeat_days_json, sound, created_at),
+            (name, time, repeat_days_json, sound, created_at, media_player),
         )
         self._conn.commit()
         alarm_id = cursor.lastrowid
@@ -79,7 +91,7 @@ class AlarmStorage:
         """Get all alarms."""
         cursor = self._conn.execute(
             """
-            SELECT id, name, time, enabled, repeat_days, sound, created_at
+            SELECT id, name, time, enabled, repeat_days, sound, created_at, media_player
             FROM alarms
             ORDER BY time
             """
@@ -96,6 +108,7 @@ class AlarmStorage:
                     "repeat_days": repeat_days,
                     "sound": row[5],
                     "created_at": row[6],
+                    "media_player": row[7],
                 }
             )
         return alarms

@@ -8,7 +8,12 @@
           "alarm_enabled": "Enable Alarm Management",
           "media_player_entity": "Media Player for Alarm Sounds",
           "alarm_sound": "Default Alarm Sound",
-          "alarm_volume": "Alarm Volume (0.0 - 1.0)"
+          "alarm_volume": "Alarm Volume (0.0 - 1.0)",
+          "snooze_duration": "Snooze Duration (minutes)",
+          "auto_dismiss_duration": "Auto-Dismiss Duration (minutes)",
+          "custom_sound_path": "Custom Sound File Path",
+          "led_entity": "LED Ring Entity (Optional)",
+          "led_alarm_color": "Alarm LED Color"
         }
       }
     },
@@ -28,7 +33,12 @@
           "alarm_enabled": "Enable Alarm Management",
           "media_player_entity": "Media Player for Alarm Sounds",
           "alarm_sound": "Default Alarm Sound",
-          "alarm_volume": "Alarm Volume (0.0 - 1.0)"
+          "alarm_volume": "Alarm Volume (0.0 - 1.0)",
+          "snooze_duration": "Snooze Duration (minutes)",
+          "auto_dismiss_duration": "Auto-Dismiss Duration (minutes)",
+          "custom_sound_path": "Custom Sound File Path",
+          "led_entity": "LED Ring Entity (Optional)",
+          "led_alarm_color": "Alarm LED Color"
         }
       }
     }

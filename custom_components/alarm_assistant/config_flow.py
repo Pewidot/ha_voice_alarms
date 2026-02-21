@@ -19,9 +19,12 @@ from .const import (
     CONF_ALARM_SOUND,
     CONF_ALARM_VOLUME,
     CONF_AUTO_DISMISS_DURATION,
+    CONF_LED_COLOR,
+    CONF_LED_ENTITY,
     CONF_MEDIA_PLAYER,
     CONF_SNOOZE_DURATION,
     DEFAULT_AUTO_DISMISS_DURATION,
+    DEFAULT_LED_COLOR,
     DEFAULT_SNOOZE_DURATION,
     DOMAIN,
     SERVICE_DEFAULTS,
@@ -78,6 +81,15 @@ class AlarmAssistantConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "custom_sound_path",
                         description="Custom sound file path (e.g., /local/my_sounds/alarm.mp3 or http://...)",
                     ): str,
+                    vol.Optional(
+                        CONF_LED_ENTITY,
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="light")
+                    ),
+                    vol.Optional(
+                        CONF_LED_COLOR,
+                        default=DEFAULT_LED_COLOR,
+                    ): selector.ColorRGBSelector(),
                 }
             )
 
@@ -158,6 +170,16 @@ class AlarmAssistantOptionsFlow(config_entries.OptionsFlow):
                     default=defaults.get("custom_sound_path", ""),
                     description="Custom sound file path (e.g., /local/my_sounds/alarm.mp3)",
                 ): str,
+                vol.Optional(
+                    CONF_LED_ENTITY,
+                    default=defaults.get(CONF_LED_ENTITY),
+                ): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="light")
+                ),
+                vol.Optional(
+                    CONF_LED_COLOR,
+                    default=defaults.get(CONF_LED_COLOR, DEFAULT_LED_COLOR),
+                ): selector.ColorRGBSelector(),
             }
         )
 

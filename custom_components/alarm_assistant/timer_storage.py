@@ -23,6 +23,7 @@ class TimerStorage:
         name: str,
         duration_seconds: int,
         sound: str = "default",
+        media_player: str | None = None,
     ) -> tuple[int, datetime]:
         """
         Add a new timer.
@@ -31,6 +32,7 @@ class TimerStorage:
             name: Name/label for the timer
             duration_seconds: Duration in seconds
             sound: Sound to play when timer completes
+            media_player: Optional media player entity ID to play timer sound on
 
         Returns:
             Tuple of (timer_id, end_time)
@@ -49,6 +51,7 @@ class TimerStorage:
             "end_time": end_time,
             "sound": sound,
             "active": True,
+            "media_player": media_player,
         }
 
         logger.info(
