@@ -42,6 +42,10 @@ class SetAlarmTool(llm.Tool):
                 "sound",
                 description="Optional alarm sound. Options: default, gentle, beep, chime, bell",
             ): str,
+            vol.Optional(
+                "media_player",
+                description="Optional media_player entity ID to play the alarm sound on. If not specified, the default configured media player will be used. Example: 'media_player.bedroom_speaker'",
+            ): str,
         }
     )
 
@@ -80,6 +84,7 @@ class SetAlarmTool(llm.Tool):
         name = tool_input.tool_args["name"]
         repeat_days = tool_input.tool_args.get("repeat_days")
         sound = tool_input.tool_args.get("sound", "default")
+        media_player = tool_input.tool_args.get("media_player")
 
         _LOGGER.info("Setting alarm: %s at %s", name, time_str)
 
@@ -96,7 +101,8 @@ class SetAlarmTool(llm.Tool):
         try:
             storage = AlarmStorage()
             alarm_id = storage.add_alarm(
-                name=name, time=time_str, repeat_days=repeat_days, sound=sound
+                name=name, time=time_str, repeat_days=repeat_days, sound=sound,
+                media_player=media_player,
             )
 
             # Schedule the alarm
@@ -188,6 +194,8 @@ class ListAlarmsTool(llm.Tool):
                     alarm_info["repeat_days"] = alarm["repeat_days"]
                 if alarm["sound"]:
                     alarm_info["sound"] = alarm["sound"]
+                if alarm.get("media_player"):
+                    alarm_info["media_player"] = alarm["media_player"]
                 alarm_list.append(alarm_info)
 
             return self.wrap_response(

@@ -41,6 +41,10 @@ class SetTimerTool(llm.Tool):
                 "sound",
                 description="Optional timer completion sound. Options: default, gentle, beep, chime, bell, custom",
             ): str,
+            vol.Optional(
+                "media_player",
+                description="Optional media_player entity ID to play the timer sound on. If not specified, the default configured media player will be used. Example: 'media_player.kitchen_speaker'",
+            ): str,
         }
     )
 
@@ -75,6 +79,7 @@ class SetTimerTool(llm.Tool):
         duration_seconds = tool_input.tool_args.get("duration_seconds", 0)
         name = tool_input.tool_args["name"]
         sound = tool_input.tool_args.get("sound", "default")
+        media_player = tool_input.tool_args.get("media_player")
 
         total_seconds = (duration_minutes * 60) + duration_seconds
 
@@ -89,7 +94,8 @@ class SetTimerTool(llm.Tool):
         try:
             storage = TimerStorage()
             timer_id, end_time = storage.add_timer(
-                name=name, duration_seconds=total_seconds, sound=sound
+                name=name, duration_seconds=total_seconds, sound=sound,
+                media_player=media_player,
             )
 
             # Schedule the timer
@@ -192,6 +198,8 @@ class ListTimersTool(llm.Tool):
                         "remaining_seconds": remaining,
                         "remaining_formatted": self._format_remaining(remaining),
                     }
+                    if timer.get("media_player"):
+                        timer_info["media_player"] = timer["media_player"]
                     timer_list.append(timer_info)
 
             if not timer_list:

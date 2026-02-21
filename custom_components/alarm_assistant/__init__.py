@@ -36,6 +36,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN]["alarm_manager"] = alarm_manager
     hass.data[DOMAIN]["timer_manager"] = timer_manager
+    hass.data[DOMAIN]["ringing_alarms"] = {}
 
     # Set up LLM functions
     config_data = {**entry.data, **entry.options}

@@ -12,8 +12,11 @@ from .const import (
     CONF_ALARM_SOUND,
     CONF_ALARM_VOLUME,
     CONF_AUTO_DISMISS_DURATION,
+    CONF_LED_COLOR,
+    CONF_LED_ENTITY,
     CONF_MEDIA_PLAYER,
     DEFAULT_AUTO_DISMISS_DURATION,
+    DEFAULT_LED_COLOR,
     DOMAIN,
 )
 
@@ -145,20 +148,30 @@ class AlarmManager:
         alarm_id = alarm["id"]
         alarm_name = alarm["name"]
         alarm_sound = alarm.get("sound", "default")
+        alarm_media_player = alarm.get("media_player")
 
         _LOGGER.info("Triggering alarm %d: %s", alarm_id, alarm_name)
 
         try:
-            # Track ringing alarm
+            # Resolve effective media player
+            config_data = self.hass.data.get(DOMAIN, {}).get("config", {})
+            effective_media_player = alarm_media_player or config_data.get(CONF_MEDIA_PLAYER)
+
+            # Track ringing alarm with its media player
             if DOMAIN not in self.hass.data:
                 self.hass.data[DOMAIN] = {}
             if "ringing_alarms" not in self.hass.data[DOMAIN]:
-                self.hass.data[DOMAIN]["ringing_alarms"] = []
+                self.hass.data[DOMAIN]["ringing_alarms"] = {}
 
-            self.hass.data[DOMAIN]["ringing_alarms"].append(alarm_id)
+            self.hass.data[DOMAIN]["ringing_alarms"][alarm_id] = {
+                "media_player": effective_media_player,
+            }
+
+            # Activate LED ring
+            await self._set_alarm_led()
 
             # Play alarm sound
-            await self._play_alarm_sound(alarm_sound)
+            await self._play_alarm_sound(alarm_sound, media_player_override=alarm_media_player)
 
             # Send notification (optional)
             await self._send_notification(alarm_name, alarm_id)
@@ -177,10 +190,10 @@ class AlarmManager:
         except Exception as e:
             _LOGGER.error("Error triggering alarm %d: %s", alarm_id, e)
 
-    async def _play_alarm_sound(self, sound: str):
+    async def _play_alarm_sound(self, sound: str, media_player_override: str | None = None):
         """Play the alarm sound using a media player."""
         config_data = self.hass.data.get(DOMAIN, {}).get("config", {})
-        media_player = config_data.get(CONF_MEDIA_PLAYER)
+        media_player = media_player_override or config_data.get(CONF_MEDIA_PLAYER)
         volume = config_data.get(CONF_ALARM_VOLUME, 0.5)
 
         if not media_player:
@@ -261,14 +274,12 @@ class AlarmManager:
             """Callback to automatically dismiss the alarm."""
             _LOGGER.info("Auto-dismissing alarm %d after %d minutes", alarm_id, auto_dismiss_minutes)
 
-            # Remove from ringing alarms list
-            if DOMAIN in self.hass.data:
-                ringing_alarms = self.hass.data[DOMAIN].get("ringing_alarms", [])
-                if alarm_id in ringing_alarms:
-                    ringing_alarms.remove(alarm_id)
+            # Remove from ringing alarms and get per-alarm media player
+            ringing_alarms = self.hass.data.get(DOMAIN, {}).get("ringing_alarms", {})
+            alarm_data = ringing_alarms.pop(alarm_id, {})
+            media_player = alarm_data.get("media_player") or config_data.get(CONF_MEDIA_PLAYER)
 
             # Stop media player
-            media_player = config_data.get(CONF_MEDIA_PLAYER)
             if media_player:
                 try:
                     await self.hass.services.async_call(
@@ -291,6 +302,10 @@ class AlarmManager:
             except Exception as e:
                 _LOGGER.warning("Could not dismiss notification during auto-dismiss: %s", e)
 
+            # Restore LED if no more ringing alarms
+            if not self.hass.data.get(DOMAIN, {}).get("ringing_alarms"):
+                await self._restore_led_state()
+
             # Remove the timer from tracking
             self._auto_dismiss_timers.pop(alarm_id, None)
 
@@ -300,6 +315,86 @@ class AlarmManager:
         )
         self._auto_dismiss_timers[alarm_id] = cancel_timer
         _LOGGER.info("Scheduled auto-dismiss for alarm %d in %d minutes", alarm_id, auto_dismiss_minutes)
+
+    async def _save_led_state(self):
+        """Save the current LED ring state before changing it."""
+        config_data = self.hass.data.get(DOMAIN, {}).get("config", {})
+        led_entity = config_data.get(CONF_LED_ENTITY)
+        if not led_entity:
+            return
+
+        state = self.hass.states.get(led_entity)
+        if state:
+            saved = {
+                "state": state.state,
+                "brightness": state.attributes.get("brightness"),
+                "rgb_color": state.attributes.get("rgb_color"),
+            }
+            self.hass.data.setdefault(DOMAIN, {})["saved_led_state"] = saved
+            _LOGGER.debug("Saved LED state: %s", saved)
+
+    async def _set_alarm_led(self):
+        """Set the LED ring to the alarm color."""
+        config_data = self.hass.data.get(DOMAIN, {}).get("config", {})
+        led_entity = config_data.get(CONF_LED_ENTITY)
+        if not led_entity:
+            return
+
+        # Only save state if not already saved (first alarm to ring)
+        if "saved_led_state" not in self.hass.data.get(DOMAIN, {}):
+            await self._save_led_state()
+
+        led_color = config_data.get(CONF_LED_COLOR, DEFAULT_LED_COLOR)
+
+        try:
+            await self.hass.services.async_call(
+                "light",
+                "turn_on",
+                {
+                    "entity_id": led_entity,
+                    "rgb_color": led_color,
+                    "brightness": 255,
+                },
+                blocking=False,
+            )
+            _LOGGER.info("Set LED ring to alarm color: %s", led_color)
+        except Exception as e:
+            _LOGGER.warning("Could not set LED ring: %s", e)
+
+    async def _restore_led_state(self):
+        """Restore the LED ring to its previous state."""
+        config_data = self.hass.data.get(DOMAIN, {}).get("config", {})
+        led_entity = config_data.get(CONF_LED_ENTITY)
+        if not led_entity:
+            return
+
+        saved = self.hass.data.get(DOMAIN, {}).pop("saved_led_state", None)
+        if not saved:
+            return
+
+        try:
+            if saved["state"] == "off":
+                await self.hass.services.async_call(
+                    "light",
+                    "turn_off",
+                    {"entity_id": led_entity},
+                    blocking=False,
+                )
+            else:
+                service_data = {"entity_id": led_entity}
+                if saved.get("brightness") is not None:
+                    service_data["brightness"] = saved["brightness"]
+                if saved.get("rgb_color") is not None:
+                    service_data["rgb_color"] = list(saved["rgb_color"])
+                await self.hass.services.async_call(
+                    "light",
+                    "turn_on",
+                    service_data,
+                    blocking=False,
+                )
+            _LOGGER.info("Restored LED ring state")
+        except Exception as e:
+            _LOGGER.warning("Could not restore LED ring: %s", e)
 
     async def reschedule_all(self):
         """Reschedule all alarms (useful after configuration changes)."""

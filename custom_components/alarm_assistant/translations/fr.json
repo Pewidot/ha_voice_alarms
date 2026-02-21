@@ -8,7 +8,12 @@
           "alarm_enabled": "Activer la Gestion des Alarmes",
           "media_player_entity": "Lecteur Multimédia pour Sons d'Alarme",
           "alarm_sound": "Son d'Alarme par Défaut",
-          "alarm_volume": "Volume d'Alarme (0,0 - 1,0)"
+          "alarm_volume": "Volume d'Alarme (0,0 - 1,0)",
+          "snooze_duration": "Durée de Répétition (minutes)",
+          "auto_dismiss_duration": "Arrêt Automatique (minutes)",
+          "custom_sound_path": "Chemin du Fichier Son Personnalisé",
+          "led_entity": "Entité Anneau LED (Optionnel)",
+          "led_alarm_color": "Couleur LED d'Alarme"
         }
       }
     },
@@ -28,7 +33,12 @@
           "alarm_enabled": "Activer la Gestion des Alarmes",
           "media_player_entity": "Lecteur Multimédia pour Sons d'Alarme",
           "alarm_sound": "Son d'Alarme par Défaut",
-          "alarm_volume": "Volume d'Alarme (0,0 - 1,0)"
+          "alarm_volume": "Volume d'Alarme (0,0 - 1,0)",
+          "snooze_duration": "Durée de Répétition (minutes)",
+          "auto_dismiss_duration": "Arrêt Automatique (minutes)",
+          "custom_sound_path": "Chemin du Fichier Son Personnalisé",
+          "led_entity": "Entité Anneau LED (Optionnel)",
+          "led_alarm_color": "Couleur LED d'Alarme"
         }
       }
     }
