@@ -99,11 +99,11 @@ class AlarmManager:
     ) -> datetime | None:
         """Calculate the next trigger time for an alarm."""
         now = dt_util.now()
-        today = now.date()
 
-        # Create a datetime for today at the alarm time
-        alarm_time = datetime.combine(today, datetime.min.time().replace(hour=hour, minute=minute))
-        alarm_time = dt_util.as_local(alarm_time)
+        # Create a timezone-aware datetime for today at the alarm time
+        # Start with the beginning of today in local timezone
+        today_start = dt_util.start_of_local_day()
+        alarm_time = today_start.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
         if repeat_days:
             # Repeating alarm - find next occurrence
@@ -123,13 +123,10 @@ class AlarmManager:
 
             # Find the next day that matches
             for days_ahead in range(8):  # Check up to 7 days ahead + today
-                check_date = today + timedelta(days=days_ahead)
-                check_time = datetime.combine(
-                    check_date, datetime.min.time().replace(hour=hour, minute=minute)
-                )
-                check_time = dt_util.as_local(check_time)
+                check_time = today_start + timedelta(days=days_ahead)
+                check_time = check_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
-                if check_date.weekday() in target_days and check_time > now:
+                if check_time.weekday() in target_days and check_time > now:
                     return check_time
 
             return None
@@ -139,11 +136,9 @@ class AlarmManager:
                 return alarm_time
             else:
                 # If time has passed today, schedule for tomorrow
-                tomorrow = today + timedelta(days=1)
-                alarm_time = datetime.combine(
-                    tomorrow, datetime.min.time().replace(hour=hour, minute=minute)
-                )
-                return dt_util.as_local(alarm_time)
+                tomorrow_time = today_start + timedelta(days=1)
+                alarm_time = tomorrow_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                return alarm_time
 
     async def _trigger_alarm(self, alarm: dict):
         """Trigger an alarm (play sound, send notification, etc.)."""
