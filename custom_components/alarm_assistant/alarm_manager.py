@@ -87,13 +87,14 @@ class AlarmManager:
             next_trigger = self._calculate_next_trigger(hour, minute, repeat_days)
 
             if next_trigger:
-                # Schedule the alarm
+                # Schedule the alarm. The callback must be a coroutine function
+                # so it runs on the event loop - a plain lambda would be run in
+                # an executor thread, where async_create_task raises RuntimeError
+                async def _handle_trigger(now, alarm=alarm):
+                    await self._trigger_alarm(alarm)
+
                 timer_cancel = async_track_point_in_time(
-                    self.hass,
-                    lambda now: self.hass.async_create_task(
-                        self._trigger_alarm(alarm)
-                    ),
-                    next_trigger,
+                    self.hass, _handle_trigger, next_trigger
                 )
                 self._scheduled_timers[alarm_id] = timer_cancel
                 _LOGGER.info(
