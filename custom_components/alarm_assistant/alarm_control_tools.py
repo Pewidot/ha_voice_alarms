@@ -73,8 +73,13 @@ class StopAlarmTool(llm.Tool):
 
     async def _stop_alarm(self, hass: HomeAssistant, alarm_id: int, alarm_info: dict | None = None):
         """Stop a specific alarm."""
-        # Cancel auto-dismiss timer if it exists
         alarm_manager = hass.data.get(DOMAIN, {}).get("alarm_manager")
+
+        # Stop the ringing watchdog so it doesn't restart the sound
+        if alarm_manager and hasattr(alarm_manager, "cancel_ringing_watchdog"):
+            alarm_manager.cancel_ringing_watchdog(alarm_id)
+
+        # Cancel auto-dismiss timer if it exists
         if alarm_manager and hasattr(alarm_manager, "_auto_dismiss_timers"):
             cancel_func = alarm_manager._auto_dismiss_timers.pop(alarm_id, None)
             if cancel_func:
@@ -159,14 +164,17 @@ class SnoozeAlarmTool(llm.Tool):
             if not ringing_alarms:
                 return {"error": "No alarm is currently ringing"}
 
-            # Cancel auto-dismiss timers for all ringing alarms
+            # Cancel auto-dismiss timers and ringing watchdogs for all ringing alarms
             alarm_manager = hass.data[DOMAIN].get("alarm_manager")
-            if alarm_manager and hasattr(alarm_manager, "_auto_dismiss_timers"):
+            if alarm_manager:
                 for alarm_id in ringing_alarms:
-                    cancel_func = alarm_manager._auto_dismiss_timers.pop(alarm_id, None)
-                    if cancel_func:
-                        cancel_func()
-                        _LOGGER.debug("Cancelled auto-dismiss timer for alarm %d during snooze", alarm_id)
+                    if hasattr(alarm_manager, "cancel_ringing_watchdog"):
+                        alarm_manager.cancel_ringing_watchdog(alarm_id)
+                    if hasattr(alarm_manager, "_auto_dismiss_timers"):
+                        cancel_func = alarm_manager._auto_dismiss_timers.pop(alarm_id, None)
+                        if cancel_func:
+                            cancel_func()
+                            _LOGGER.debug("Cancelled auto-dismiss timer for alarm %d during snooze", alarm_id)
 
             # Stop each ringing alarm's media player
             stopped_players = set()

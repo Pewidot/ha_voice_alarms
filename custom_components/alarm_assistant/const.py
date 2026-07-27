@@ -59,6 +59,10 @@ DEFAULT_SNOOZE_DURATION = 9  # minutes
 CONF_AUTO_DISMISS_DURATION = "auto_dismiss_duration"
 DEFAULT_AUTO_DISMISS_DURATION = 10  # minutes
 
+# Ringing watchdog settings
+RINGING_CHECK_INTERVAL = 2  # seconds between media player state checks
+RINGING_RESTART_GRACE = 5  # seconds to wait before restarting interrupted playback
+
 # LED ring control
 CONF_LED_ENTITY = "led_entity"
 CONF_LED_COLOR = "led_alarm_color"

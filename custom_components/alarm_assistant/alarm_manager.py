@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.util import dt as dt_util
 
@@ -18,6 +19,8 @@ from .const import (
     DEFAULT_AUTO_DISMISS_DURATION,
     DEFAULT_LED_COLOR,
     DOMAIN,
+    RINGING_CHECK_INTERVAL,
+    RINGING_RESTART_GRACE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,6 +35,7 @@ class AlarmManager:
         self.storage = AlarmStorage()
         self._scheduled_timers = {}
         self._auto_dismiss_timers = {}
+        self._ringing_watchdogs = {}
         self._running = False
 
     async def start(self):
@@ -63,6 +67,11 @@ class AlarmManager:
         for timer_cancel in self._auto_dismiss_timers.values():
             timer_cancel()
         self._auto_dismiss_timers.clear()
+
+        # Cancel all ringing watchdogs
+        for task in self._ringing_watchdogs.values():
+            task.cancel()
+        self._ringing_watchdogs.clear()
 
     async def _schedule_alarm(self, alarm: dict):
         """Schedule a single alarm."""
@@ -173,6 +182,13 @@ class AlarmManager:
             # Play alarm sound
             await self._play_alarm_sound(alarm_sound, media_player_override=alarm_media_player)
 
+            # Keep the sound ringing until the alarm is stopped, snoozed
+            # or auto-dismissed (saying the wake word interrupts playback)
+            if effective_media_player:
+                self._start_ringing_watchdog(
+                    alarm_id, alarm_sound, effective_media_player
+                )
+
             # Send notification (optional)
             await self._send_notification(alarm_name, alarm_id)
 
@@ -244,6 +260,81 @@ class AlarmManager:
         except Exception as e:
             _LOGGER.error("Error playing alarm sound: %s", e)
 
+    def _is_ringing(self, alarm_id: int) -> bool:
+        """Return True if the alarm is still in the ringing state."""
+        return alarm_id in self.hass.data.get(DOMAIN, {}).get("ringing_alarms", {})
+
+    def _satellite_busy(self, media_player: str) -> bool:
+        """Return True if a voice satellite on the same device is mid-interaction."""
+        ent_reg = er.async_get(self.hass)
+        mp_entry = ent_reg.async_get(media_player)
+        if not mp_entry or not mp_entry.device_id:
+            return False
+        for entry in er.async_entries_for_device(ent_reg, mp_entry.device_id):
+            if entry.domain != "assist_satellite":
+                continue
+            state = self.hass.states.get(entry.entity_id)
+            if state and state.state in ("listening", "processing", "responding"):
+                return True
+        return False
+
+    def _start_ringing_watchdog(self, alarm_id: int, sound: str, media_player: str):
+        """Start a watchdog that keeps the alarm sound playing while ringing."""
+        self.cancel_ringing_watchdog(alarm_id)
+        self._ringing_watchdogs[alarm_id] = self.hass.async_create_background_task(
+            self._ringing_watchdog(alarm_id, sound, media_player),
+            f"{DOMAIN}_ringing_watchdog_{alarm_id}",
+        )
+
+    def cancel_ringing_watchdog(self, alarm_id: int):
+        """Cancel the ringing watchdog for an alarm."""
+        task = self._ringing_watchdogs.pop(alarm_id, None)
+        if task:
+            task.cancel()
+
+    async def _ringing_watchdog(self, alarm_id: int, sound: str, media_player: str):
+        """Restart alarm playback whenever it stops while the alarm is ringing.
+
+        Saying the wake word makes the voice satellite stop the alarm sound to
+        listen, and short sound files simply end. In both cases the alarm is
+        still ringing (not stopped or snoozed), so the sound must come back.
+        Before restarting, wait for a running voice interaction to finish so
+        a "stop alarm" or "snooze" command gets a chance to be handled.
+        """
+        try:
+            while self._is_ringing(alarm_id):
+                await asyncio.sleep(RINGING_CHECK_INTERVAL)
+                if not self._is_ringing(alarm_id):
+                    break
+
+                state = self.hass.states.get(media_player)
+                if state and state.state in ("playing", "buffering"):
+                    continue
+
+                # Playback stopped - give a possible voice interaction time
+                # to stop or snooze the alarm before restarting the sound
+                await asyncio.sleep(RINGING_RESTART_GRACE)
+                while self._is_ringing(alarm_id) and self._satellite_busy(media_player):
+                    await asyncio.sleep(RINGING_CHECK_INTERVAL)
+                if not self._is_ringing(alarm_id):
+                    break
+
+                _LOGGER.debug("Restarting alarm sound for alarm %d", alarm_id)
+                await self._play_alarm_sound(sound, media_player_override=media_player)
+
+                if not self._is_ringing(alarm_id):
+                    # Alarm was stopped while we were restarting - silence it again
+                    await self.hass.services.async_call(
+                        "media_player",
+                        "media_stop",
+                        {"entity_id": media_player},
+                        blocking=False,
+                    )
+                    break
+        finally:
+            if self._ringing_watchdogs.get(alarm_id) is asyncio.current_task():
+                self._ringing_watchdogs.pop(alarm_id, None)
+
     async def _send_notification(self, alarm_name: str, alarm_id: int):
         """Send a notification for the alarm."""
         try:
@@ -273,6 +364,9 @@ class AlarmManager:
         async def auto_dismiss_callback(now):
             """Callback to automatically dismiss the alarm."""
             _LOGGER.info("Auto-dismissing alarm %d after %d minutes", alarm_id, auto_dismiss_minutes)
+
+            # Stop the ringing watchdog so it doesn't restart the sound
+            self.cancel_ringing_watchdog(alarm_id)
 
             # Remove from ringing alarms and get per-alarm media player
             ringing_alarms = self.hass.data.get(DOMAIN, {}).get("ringing_alarms", {})
