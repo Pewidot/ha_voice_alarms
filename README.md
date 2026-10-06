@@ -5,6 +5,11 @@ A custom Home Assistant integration that enables voice-controlled alarm and time
 **Author**: Pewidot
 **Repository**: https://github.com/Pewidot/ha_voice_alarms
 
+## Requirements
+
+- **An LLM conversation agent** (e.g. OpenAI, Google Generative AI, Anthropic, Ollama) used by your voice assistant. The alarm and timer commands are provided as LLM tools, so the built-in "Home Assistant" agent (local voice without an LLM) cannot use them and answers "Sorry, I couldn't understand that".
+- A media player to play the alarm sounds
+
 ## Features
 
 ### Alarms
@@ -63,10 +68,26 @@ Full support for 5 languages:
 
 ### HACS Installation
 
-Add as custom repository:
-```
-https://github.com/Pewidot/ha_voice_alarms
-```
+1. **Add as custom repository** (type: Integration)
+   ```
+   https://github.com/Pewidot/ha_voice_alarms
+   ```
+
+2. **Download** "Voice Alarm Assistant" in HACS
+
+3. **Restart Home Assistant**
+
+4. **Add Integration** as in step 4 of the manual installation - installing through HACS alone does not set it up
+
+HACS only installs the integration itself. Copy the sound files to `<config>/www/alarm_sounds/` as in step 2 of the manual installation.
+
+### Enable the Tools for Your Conversation Agent
+
+The integration only provides the alarm and timer tools. Your LLM conversation agent has to be allowed to use them:
+
+1. Go to **Settings** → **Devices & Services** and open the options of your conversation agent (e.g. OpenAI, Ollama)
+2. Under **Control Home Assistant**, select **Alarm Management**
+3. Try it: "Set an alarm for 7:30 AM"
 
 ## Configuration
 
@@ -79,6 +100,9 @@ https://github.com/Pewidot/ha_voice_alarms
 - **Volume**: Set playback volume (0.0 - 1.0)
 - **Custom Sound Path**: Path to custom sound file (optional)
 - **Snooze Duration**: Default snooze time in minutes (default: 9)
+- **Auto-Dismiss Duration**: Stop a ringing alarm automatically after this many minutes (default: 10)
+- **LED Ring Entity**: Light entity that is lit while an alarm rings and restored afterwards, e.g. the LED ring of a voice satellite (optional)
+- **Alarm LED Color**: Color of the LED ring while an alarm rings (default: red)
 
 ### Available Sounds
 
@@ -233,10 +257,16 @@ Use day abbreviations:
 4. Check volume is not 0
 
 ### Voice Commands Not Working
-1. Verify voice assistant is configured
-2. Check integration is enabled
-3. Try exact command: "Set an alarm for 7:30 AM"
-4. Check logs for LLM errors
+1. Verify your voice assistant uses an LLM conversation agent - without one it answers "Sorry, I couldn't understand that" (see [Requirements](#requirements))
+2. Check "Alarm Management" is selected for that agent (see [Enable the Tools for Your Conversation Agent](#enable-the-tools-for-your-conversation-agent))
+3. Check the integration is added under Settings → Devices & Services
+4. Try exact command: "Set an alarm for 7:30 AM"
+5. Check logs for LLM errors
+
+### LED Ring Not Lighting Up
+1. Test the light manually: Developer Tools → Actions → `light.turn_on` with a color, once while the device is idle and once while it plays audio
+2. Check logs for "LED ring entity ... is not available"
+3. Some voice satellite firmwares control the LED ring themselves and override what Home Assistant sets
 
 ### Timer/Alarm Won't Stop
 1. Say "Stop the alarm" or "Stop the timer"

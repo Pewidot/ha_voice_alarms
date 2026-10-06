@@ -36,6 +36,7 @@ class AlarmManager:
         self._scheduled_timers = {}
         self._auto_dismiss_timers = {}
         self._ringing_watchdogs = {}
+        self._led_unavailable_warned = False
         self._running = False
 
     async def start(self):
@@ -177,11 +178,12 @@ class AlarmManager:
                 "media_player": effective_media_player,
             }
 
-            # Activate LED ring
-            await self._set_alarm_led()
-
             # Play alarm sound
             await self._play_alarm_sound(alarm_sound, media_player_override=alarm_media_player)
+
+            # Activate LED ring. Done after the sound is started because some
+            # voice satellites repaint their LED ring on volume/playback changes
+            await self._set_alarm_led()
 
             # Keep the sound ringing until the alarm is stopped, snoozed
             # or auto-dismissed (saying the wake word interrupts playback)
@@ -301,8 +303,13 @@ class AlarmManager:
         still ringing (not stopped or snoozed), so the sound must come back.
         Before restarting, wait for a running voice interaction to finish so
         a "stop alarm" or "snooze" command gets a chance to be handled.
+
+        The LED ring gets the same treatment: the device firmware may repaint
+        it when playback starts or after a voice interaction, so the alarm
+        color is applied again each time playback is seen running.
         """
         try:
+            led_refreshed = False
             while self._is_ringing(alarm_id):
                 await asyncio.sleep(RINGING_CHECK_INTERVAL)
                 if not self._is_ringing(alarm_id):
@@ -310,7 +317,11 @@ class AlarmManager:
 
                 state = self.hass.states.get(media_player)
                 if state and state.state in ("playing", "buffering"):
+                    if not led_refreshed:
+                        await self._set_alarm_led()
+                        led_refreshed = True
                     continue
+                led_refreshed = False
 
                 # Playback stopped - give a possible voice interaction time
                 # to stop or snooze the alarm before restarting the sound
@@ -434,6 +445,18 @@ class AlarmManager:
         led_entity = config_data.get(CONF_LED_ENTITY)
         if not led_entity:
             return
+
+        state = self.hass.states.get(led_entity)
+        if state is None or state.state == "unavailable":
+            # Warn only once, this is called repeatedly while an alarm rings
+            if not self._led_unavailable_warned:
+                _LOGGER.warning(
+                    "LED ring entity %s is not available, cannot set alarm color",
+                    led_entity,
+                )
+                self._led_unavailable_warned = True
+            return
+        self._led_unavailable_warned = False
 
         # Only save state if not already saved (first alarm to ring)
         if "saved_led_state" not in self.hass.data.get(DOMAIN, {}):
